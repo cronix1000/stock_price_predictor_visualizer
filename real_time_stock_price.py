@@ -6,7 +6,7 @@ def real_time_price(ticker):
     api_key = load_api_key()
     symbol = ticker
     api_url = 'https://api.api-ninjas.com/v1/stockprice?ticker={}'.format(symbol)
-    response = requests.get(api_url, headers={'X-Api-Key': 'Cbgg/gLw+bEFIqPV3ogIfA==OPfx9HF42ETxl2WX'})
+    response = requests.get(api_url, headers={'X-Api-Key': api_key})
     if response.status_code == requests.codes.ok:
         print(response.text)
         return response.json()["price"]

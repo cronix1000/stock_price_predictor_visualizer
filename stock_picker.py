@@ -9,7 +9,6 @@ from stock_data_ai import train_regression_model
 from real_time_stock_price import real_time_price
 from predict_price import predict_price_movement
 from stock_visualizer import StockVisualizerApp
-
 class StockTickerApp:
     def __init__(self, root):
         self.root = root
@@ -30,8 +29,11 @@ class StockTickerApp:
                 return secrets.get('alpha_vantage_api_key', '')
 
     def create_widgets(self):
+        self.main_widgets = []
+
         content_frame = ttk.Frame(self.root, padding="10")
         content_frame.pack(fill="both", expand=True)
+        self.main_widgets.append(content_frame)
         
         left_frame = ttk.Frame(content_frame)
         left_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
@@ -61,12 +63,12 @@ class StockTickerApp:
         for text, value in intervals:
             ttk.Radiobutton(interval_frame, text=text, value=value, variable=self.interval_var).pack(side="left")
         
-        # Fetch Button
         ttk.Button(right_frame, text="Get Data", command=self.fetch_data).pack(pady=10)
         
-        # Status Frame
         self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(self.root, textvariable=self.status_var).pack(pady=5)
+        status_label = ttk.Label(self.root, textvariable=self.status_var)
+        status_label.pack(pady=5)
+        self.main_widgets.append(status_label)
    
     def add_ticker(self):
         dialog = tk.Toplevel(self.root)
@@ -90,6 +92,17 @@ class StockTickerApp:
         for index in reversed(selection):
             self.ticker_listbox.delete(index)
         
+    def setup_visualizer(self, prediction, current_price,ticker):
+        for widget in self.main_widgets:
+                    widget.pack_forget()
+
+        back_frame = ttk.Frame(self.root)
+        back_frame.pack(fill="x", padx=5, pady=5)
+        
+        visualizer_frame = ttk.Frame(self.root)
+        visualizer_frame.pack(fill="both", expand=True)
+        self.visualizer = StockVisualizerApp(visualizer_frame, ticker,prediction, current_price)
+
     def fetch_data(self):
         if not self.api_key:
             messagebox.showerror("Error", "Please enter an API key first!")
@@ -130,31 +143,29 @@ class StockTickerApp:
                     continue
                     
                 df = pd.DataFrame.from_dict(data[time_series_key], orient='index')
-        
+                df = df.apply(pd.to_numeric, errors='coerce')
                 df.columns = ['open', 'high', 'low', 'close', 'volume']
                 
                 df.index = pd.to_datetime(df.index)
                 
                 df.sort_index(inplace=True)
-                
-                filename = f"{ticker}_{interval}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-                df.to_csv(filename)
-                messagebox.showinfo("Success", f"Data for {ticker} saved to {filename}")
 
                 features = df[df.columns].iloc[-1].values.reshape(1, -1)
                 print(features)
 
-                model = train_regression_model(filename)
+                model, accuracy, merged_data = train_regression_model(df, ticker)
                 current_price = real_time_price(ticker)
                 pred = predict_price_movement(model, current_price, features)
+                
+                self.setup_visualizer(pred,current_price,ticker)
+                messagebox.showinfo("Analysis Complete", 
+                                  f"Data saved to {filename}\n"
+                                  f"Model Accuracy: {accuracy:.2f}\n"
+                                  f"Prediction: {'Up' if pred else 'Down'}")
                 print(pred)
 
                 for widget in self.root.winfo_children():
                     widget.destroy()
-
-                StockVisualizerApp(self.root, df, ticker)
-
-
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Error processing {ticker}: {str(e)}")

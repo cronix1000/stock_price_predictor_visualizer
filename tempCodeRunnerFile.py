@@ -1,0 +1,1 @@
+                # messagebox.showinfo("Success", f"Data for {ticker} saved to {filename}")

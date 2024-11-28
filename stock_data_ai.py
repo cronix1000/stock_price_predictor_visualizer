@@ -6,61 +6,30 @@ import datetime as dt
 import yfinance as yf
 from textblob import TextBlob
 from datetime import datetime
+from sklearn.metrics import accuracy_score, classification_report
 
-def train_regression_model(csv, symbol):
-        data = csv
-        
-        sentiment_data = get_news_sentiment(symbol,symbol)
+def train_regression_model(data):
 
-        data['date'] = pd.to_datetime(data.index)
-        merged_data = pd.merge(data, sentiment_data, on='date', how='left')
-        merged_data['sentiment'] = merged_data['sentiment'].fillna(0)
+    # MA = Moving Average
+    # MA5 = 5 day moving average
+    # MA10 = 10 day moving average
+    # Volatility = High - Low
+    data['MA5'] = data['Close'].rolling(window=5).mean()
+    data['MA10'] = data['Close'].rolling(window=10).mean()
+    data['Price_Change'] = data['Close'] - data['Open']
+    data['Volatility'] = data['High'] - data['Low']
+    data = data.fillna(0)
 
-        # Calculates the change in price between the current and the previous element
-        data['price_change'] = data['close'].pct_change()
+    stock_data = data
 
-        # Add the value if its greater then 0 if it was convert it to a bool value
-        data['label'] = (data['price_change'] > 0).astype(int)
+    x = stock_data[['MA5', 'MA10', 'Price_Change', 'Volatility', 'Volume']]
+    y = stock_data['open_price']
+    
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=0)
 
+    model = LogisticRegression()
+    model.fit(x_train, y_train)
 
+    #y_pred = model.predict(x_test)
 
-        X = data[['open', 'high', 'low', 'close', 'volume']]
-        y = data['label']
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42)
-        
-        model = LogisticRegression()
-        model.fit(X_train, y_train)
-        
-        y_pred = model.predict(X_test)
-        accuracy = r2_score(y_test, y_pred)
-        
-        return model, accuracy, merged_data
-
-
-
-def get_news_sentiment(self, symbol, days=30):
-        """Fetch news and calculate sentiment scores for the stock."""
-        try:
-            stock = yf.Ticker(symbol)
-            news = stock.news
-            
-            sentiments = []
-            dates = []
-            
-            for article in news:
-                if 'title' in article:
-                    blob = TextBlob(article['title'])
-                    sentiment = blob.sentiment.polarity
-                    date = datetime.fromtimestamp(article['providerPublishTime'])
-                    sentiments.append(sentiment)
-                    dates.append(date)
-            
-            return pd.DataFrame({
-                'date': dates,
-                'sentiment': sentiments
-            })
-        except Exception as e:
-            print(f"Error fetching news: {e}")
-            return pd.DataFrame(columns=['date', 'sentiment'])
-
+    return model

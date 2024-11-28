@@ -2,19 +2,19 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
+import yfinance as yf
 
 from stock_data_ai import train_regression_model  
 from real_time_stock_price import real_time_price
 from predict_price import predict_price_movement
-from stock_visualizer import StockVisualizerApp
+
 class StockTickerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Stock Data Fetcher")
-        self.root.geometry("800x600")
-        self.api_key = self.load_api_key()
+        self.root.geometry("800x200")
         
         self.default_tickers = [
             'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META',
@@ -22,11 +22,6 @@ class StockTickerApp:
         ]
         
         self.create_widgets()
-    
-    def load_api_key(self):
-            with open('secrets.json', 'r') as file:
-                secrets = json.load(file)
-                return secrets.get('alpha_vantage_api_key', '')
 
     def create_widgets(self):
         self.main_widgets = []
@@ -48,129 +43,58 @@ class StockTickerApp:
         button_frame = ttk.Frame(left_frame)
         button_frame.pack(fill="x", pady=5)
         
-        ttk.Button(button_frame, text="Add Ticker", command=self.add_ticker).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="Remove Selected", command=self.remove_ticker).pack(side="left", padx=2)
-        
         right_frame = ttk.Frame(content_frame)
         right_frame.pack(side="right", fill="both", expand=True, padx=(5, 0))
-        
-        ttk.Label(right_frame, text="Interval:").pack()
-        self.interval_var = tk.StringVar(value="5min")
-        interval_frame = ttk.Frame(right_frame)
-        interval_frame.pack(fill="x")
-        
-        intervals = [("1min", "1min"), ("5min", "5min"), ("15min", "15min"), ("30min", "30min"), ("60min", "60min")]
-        for text, value in intervals:
-            ttk.Radiobutton(interval_frame, text=text, value=value, variable=self.interval_var).pack(side="left")
-        
-        ttk.Button(right_frame, text="Get Data", command=self.fetch_data).pack(pady=10)
-        
-        self.status_var = tk.StringVar(value="Ready")
-        status_label = ttk.Label(self.root, textvariable=self.status_var)
-        status_label.pack(pady=5)
-        self.main_widgets.append(status_label)
-   
-    def add_ticker(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Add Ticker")
-        dialog.geometry("300x100")
-        
-        ttk.Label(dialog, text="Enter Ticker Symbol:").pack(pady=5)
-        entry = ttk.Entry(dialog)
-        entry.pack(pady=5)
-        
-        def submit():
-            ticker = entry.get().strip().upper()
-            if ticker:
-                self.ticker_listbox.insert(tk.END, ticker)
-                dialog.destroy()
-        
-        ttk.Button(dialog, text="Add", command=submit).pack(pady=5)
-        
-    def remove_ticker(self):
-        selection = self.ticker_listbox.curselection()
-        for index in reversed(selection):
-            self.ticker_listbox.delete(index)
-        
-    def setup_visualizer(self, prediction, current_price,ticker):
-        for widget in self.main_widgets:
-                    widget.pack_forget()
 
-        back_frame = ttk.Frame(self.root)
-        back_frame.pack(fill="x", padx=5, pady=5)
-        
-        visualizer_frame = ttk.Frame(self.root)
-        visualizer_frame.pack(fill="both", expand=True)
-        self.visualizer = StockVisualizerApp(visualizer_frame, ticker,prediction, current_price)
+        ttk.Label(right_frame, text="Input Date (YYYY-MM-DD):").pack()
+        self.date_entry = ttk.Entry(right_frame)
+        self.date_entry.pack(pady=5)
+    
+        ttk.Button(right_frame, text="Get Data", command=self.fetch_data).pack(pady=10)
+
 
     def fetch_data(self):
-        if not self.api_key:
-            messagebox.showerror("Error", "Please enter an API key first!")
-            return
-            
         selection = self.ticker_listbox.curselection()
         if not selection:
             messagebox.showwarning("Warning", "Please select at least one ticker!")
             return
-            
-        selected_tickers = [self.ticker_listbox.get(i) for i in selection]
-        interval = self.interval_var.get()
         
-        for ticker in selected_tickers:
-            self.status_var.set(f"Fetching data for {ticker}...")
-            self.root.update()
-            
-            try:
-                url = (f"https://www.alphavantage.co/query?"
-                      f"function=TIME_SERIES_INTRADAY"
-                      f"&symbol={ticker}"
-                      f"&interval={interval}"
-                      f"&apikey={self.api_key}"
-                      f"&outputsize=full")
-                
-                response = requests.get(url)
-                data = response.json()
-                
+        selected_tickers = [self.ticker_listbox.get(i) for i in selection]
+        input_date = self.date_entry.get().strip()
 
-                
-                if "Error Message" in data:
-                    messagebox.showerror("Error", f"Error fetching {ticker}: {data['Error Message']}")
+        
+
+        try:
+            target_date = datetime.strptime(input_date, "%Y-%m-%d")
+            start_date = (target_date - timedelta(days=30)).strftime("%Y-%m-%d")
+            end_date = target_date.strftime("%Y-%m-%d")
+
+            print(target_date, start_date, end_date)
+
+            for ticker in selected_tickers:
+                # Download data
+                data = yf.download(ticker, start=start_date, end=end_date)
+                if data.empty:
+                    messagebox.showerror("Error", f"No data found for {ticker}.")
                     continue
 
-                time_series_key = f"Time Series ({interval})"
-                if time_series_key not in data:
-                    messagebox.showerror("Error", f"No data available for {ticker}")
-                    continue
-                    
-                df = pd.DataFrame.from_dict(data[time_series_key], orient='index')
-                df = df.apply(pd.to_numeric, errors='coerce')
-                df.columns = ['open', 'high', 'low', 'close', 'volume']
-                
-                df.index = pd.to_datetime(df.index)
-                
-                df.sort_index(inplace=True)
+                data['open_price'] = (data['Open'].shift(-1) > data['Open']).astype(int)
+                data = data.dropna()
 
-                features = df[df.columns].iloc[-1].values.reshape(1, -1)
-                print(features)
+                # Train model
+                model = train_regression_model(data)
 
-                model, accuracy, merged_data = train_regression_model(df, ticker)
-                current_price = real_time_price(ticker)
-                pred = predict_price_movement(model, current_price, features)
-                
-                self.setup_visualizer(pred,current_price,ticker)
-                messagebox.showinfo("Analysis Complete", 
-                                  f"Data saved to {filename}\n"
-                                  f"Model Accuracy: {accuracy:.2f}\n"
-                                  f"Prediction: {'Up' if pred else 'Down'}")
-                print(pred)
+                # Prepare features
+                features = data[['Open', 'High', 'Low', 'Close', 'Volume']].iloc[-1].values.reshape(1, -1)
+                prediction = predict_price_movement(model, features)
+                actual_direction = data['open_price'].iloc[-1]
+                print(f"Prediction: {prediction}, Actual: {actual_direction}")
 
-                for widget in self.root.winfo_children():
-                    widget.destroy()
-                
-            except Exception as e:
-                messagebox.showerror("Error", f"Error processing {ticker}: {str(e)}")
-            
-        self.status_var.set("Ready")
+                messagebox.showinfo(f"Prediction Result: {0}, Actual Result {1}", prediction, actual_direction)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
+
 
 if __name__ == "__main__":
     root = tk.Tk()
